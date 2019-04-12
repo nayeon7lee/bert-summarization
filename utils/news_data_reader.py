@@ -318,10 +318,10 @@ def get_dataloaders():
 
 if __name__ == "__main__":
     # # 1. for generating the pickle files from chunked.bin data files
-    # create_examples(config.train_data_path+'/chunked/*')
+    create_examples(config.train_data_path+'/chunked/*')
 
     # 2. obtain dataloaders
-    train_dl, val_dl, test_dl = get_dataloaders()
+    # train_dl, val_dl, test_dl = get_dataloaders()
 
     # print(len(train_dl))
     # print(len(val_dl))
