@@ -25,6 +25,7 @@ parser.add_argument("--model", type=str, default="trs")
 parser.add_argument("--label_smoothing", action="store_true")
 parser.add_argument("--noam", action="store_true")
 parser.add_argument("--split_copy_head", action="store_true")
+parser.add_argument("--small", action="store_true", help="using smaller data. suitable for debug/testing")
 
 ## transformer 
 parser.add_argument("--hop", type=int, default=12)
@@ -107,3 +108,6 @@ root_dir = os.path.expanduser("~")
 train_data_path = os.path.join(root_dir, "naver2/data")
 max_seq_length = arg.max_seq_length # initially was 128, but i changed to 512
 vocab_size = 30522
+
+
+small = arg.small

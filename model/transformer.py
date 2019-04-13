@@ -182,16 +182,16 @@ class Transformer(nn.Module):
             os.makedirs(self.model_dir)
         self.best_path = ""
 
-    def save_model(self, running_avg_ppl, iter, r1,r2,rl,r_avg):
+    def save_model(self, loss, iter,r_avg): # r1,r2,rl
         state = {
             'iter': iter,
             'decoder_state_dict': self.decoder.state_dict(),
             'generator_dict': self.generator.state_dict(),
             'embedding_dict': self.embedding.state_dict(),
             #'optimizer': self.optimizer.state_dict(),
-            'current_loss': running_avg_ppl
+            'current_loss': loss
         }
-        model_save_path = os.path.join(self.model_dir, 'model_{}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}'.format(iter,running_avg_ppl,r1,r2,rl,r_avg) )
+        model_save_path = os.path.join(self.model_dir, 'model_{}_{:.4f}_{:.4f}'.format(iter,loss,r_avg))
         self.best_path = model_save_path
         torch.save(state, model_save_path)
 
@@ -243,14 +243,10 @@ class Transformer(nn.Module):
 
             # decoded_words.append(['<EOS>'if ni.item() == config.EOS_idx 
             #                             else self.model.index2word[ni.item()] for ni in next_word.view(-1)])
-
-            print(next_word)  # batch size 
             decoded_words.append(self.tokenizer.convert_ids_to_tokens(next_word.tolist()))
             # decoded_words.append(''.join(self.tokenizer.convert_ids_to_tokens(next_word.tolist())))
 
-
             next_word = next_word.data[0]
-
             if config.USE_CUDA:
                 ys = torch.cat([ys, torch.ones(1, 1).long().fill_(next_word).cuda()], dim=1)
                 ys = ys.cuda()
@@ -260,7 +256,6 @@ class Transformer(nn.Module):
 
         sent = []
         for _, row in enumerate(np.transpose(decoded_words)):
-            print(row)
             st = ''
             for e in row:
                 if e == '<EOS>': break
