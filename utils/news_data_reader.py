@@ -79,14 +79,22 @@ def abstract2sents(abstract):
     except ValueError as e: # no more sentences
       return sents
 
-def load_examples():
+def load_examples(is_small):
     articles = {'train':[],'val':[],'test':[]}
     summaries = {'train':[],'val':[],'test':[]}
+    if not is_small:
+        article_path = '{}/articles_{}.pickle'
+        summary_path = '{}/summaries_{}.pickle'
+    else:
+        article_path = '{}/articles_small_{}.pickle'
+        summary_path = '{}/summaries_small_{}.pickle'
+
     for k in articles:
-        with open('{}/articles_{}.pickle'.format(config.train_data_path, k), 'rb') as handle:
+        with open(article_path.format(config.train_data_path, k), 'rb') as handle:
             articles[k] = pickle.load(handle)
-        with open('{}/summaries_{}.pickle'.format(config.train_data_path, k), 'rb') as handle:
+        with open(summary_path.format(config.train_data_path, k), 'rb') as handle:
             summaries[k] = pickle.load(handle)
+
     return (articles['train'], summaries['train']), (articles['val'], summaries['val']), (articles['test'], summaries['test'])
 
 def create_examples(data_path):
@@ -120,13 +128,20 @@ def create_examples(data_path):
                 summaries[split].append(
                   InputExample(unique_id=unique_id, text_a=abstract_text, text_b=None))
                 unique_id += 1
-
-        print("Saving datafiles")
+        
         for k in articles:
+            print("Saving full datafiles")
             with open('{}/articles_{}.pickle'.format(config.train_data_path, k), 'wb') as handle:
                 pickle.dump(articles[k], handle, protocol=pickle.HIGHEST_PROTOCOL)
             with open('{}/summaries_{}.pickle'.format(config.train_data_path, k), 'wb') as handle:
                 pickle.dump(summaries[k], handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+            print("Saving smaller version for debugging")
+            size = int(len(articles[k])*0.1)
+            with open('{}/articles_small_{}.pickle'.format(config.train_data_path, k), 'wb') as handle:
+                pickle.dump(articles[k][:size], handle, protocol=pickle.HIGHEST_PROTOCOL)
+            with open('{}/summaries_small_{}.pickle'.format(config.train_data_path, k), 'wb') as handle:
+                pickle.dump(summaries[k][:size], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         print("Completed reading all datafiles. No more data.")
         break
@@ -153,6 +168,7 @@ class Dataset(data.Dataset):
         
         item['input_feature']=self.preprocess(self.articles[idx], is_bert=True) # BERT input features  
         item['target_feature']=self.preprocess(self.summaries[idx]) # WordPiece features only
+        item['target_txt']=self.summaries[idx].text_a
 
         if config.pointer_gen:
             # TODO: NEED TO UPDATE 
@@ -247,7 +263,6 @@ def collate_fn(data):
     input_mask_batch = torch.tensor([f.input_mask for f in input_features], dtype=torch.long)
     example_index_batch = torch.zeros(input_ids_batch.size(0), dtype=torch.long)
     # example_index_batch = torch.arange(input_ids_batch.size(0), dtype=torch.long)
-
     target_batch = torch.tensor(item_info['target_feature'], dtype=torch.long)
     # target_batch, target_lengths = merge(item_info['target_feature'])
 
@@ -260,7 +275,6 @@ def collate_fn(data):
         input_ids_batch = input_ids_batch.cuda()
         input_mask_batch = input_mask_batch.cuda()
         example_index_batch = example_index_batch.cuda()
-
         target_batch = target_batch.cuda()
 
     d = {}
@@ -268,6 +282,7 @@ def collate_fn(data):
     d["input_mask_batch"]=input_mask_batch
     d["example_index_batch"]=example_index_batch
     d["target_batch"] = target_batch
+    d["target_txt"] = item_info["target_txt"]
 
     d["target_feature"] = item_info["target_feature"]
 
@@ -295,9 +310,9 @@ def collate_fn(data):
             d["max_art_oovs"] = max(len(art_oovs) for art_oovs in item_info["article_oovs"])
     return d 
 
-def get_dataloaders():
+def get_dataloaders(is_small=False):
     # (train_a, train_s), (val_a, val_s), (test_a, test_s) = load_examples()
-    train, val, test = load_examples()
+    train, val, test = load_examples(is_small)
 
     train_dataset = Dataset(*train) # train_a, train_s
     train_dl = torch.utils.data.DataLoader(dataset=train_dataset,

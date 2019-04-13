@@ -8,12 +8,12 @@ from tqdm import tqdm
 import os
 import time 
 import numpy as np 
-from utils.news_data_reader import get_dataloaders
+from utils.news_data_reader import get_dataloaders, InputExample, InputFeatures
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-train_dl, val_dl, test_dl = get_dataloaders()
+train_dl, val_dl, test_dl = get_dataloaders(is_small=True)
 
 if(config.test):
     print("Test model",config.model)
@@ -37,16 +37,25 @@ for e in range(config.epochs):
         p.append(ppl)
         pbar.set_description("loss:{:.4f} ppl:{:.1f}".format(np.mean(l),np.mean(p)))
 
-    evaluate(model,train_dl,model_name=config.model,ty="train")
-    loss,ppl_val = evaluate(model,val_dl,model_name=config.model,ty="valid")
-
-    r1,r2,rl = 0,0,0 'TODO' # TODO
-
-    if(ppl_val <= best_ppl):
-        best_ppl = ppl_val
-        cnt = 0
-        model.save_model(best_ppl,e,r1,r2,rl) # running_avg_ppl, iter, r1,r2,rl)
-    else: 
-        cnt += 1
-    if(cnt > 10): break
+        if i==1:
+            evaluate(model,train_dl,model_name=config.model,ty="train")
+            loss,ppl_val,r_avg = evaluate(model,val_dl,model_name=config.model,ty="valid")
+            r1,r2,rl = 0,0,0
+            if(ppl_val <= best_ppl):
+                best_ppl = ppl_val
+                cnt = 0
+                model.save_model(best_ppl,e,r1,r2,rl,r_avg) # running_avg_ppl, iter, r1,r2,rl)
+            else: 
+                cnt += 1
+            if(cnt > 10): break
+    # evaluate(model,train_dl,model_name=config.model,ty="train")
+    # loss,ppl_val,r_avg = evaluate(model,val_dl,model_name=config.model,ty="valid")
+    # r1,r2,rl = 0,0,0
+    # if(ppl_val <= best_ppl):
+    #     best_ppl = ppl_val
+    #     cnt = 0
+    #     model.save_model(best_ppl,e,r1,r2,rl,r_avg) # running_avg_ppl, iter, r1,r2,rl)
+    # else: 
+    #     cnt += 1
+    # if(cnt > 10): break
 

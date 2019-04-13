@@ -182,7 +182,7 @@ class Transformer(nn.Module):
             os.makedirs(self.model_dir)
         self.best_path = ""
 
-    def save_model(self, running_avg_ppl, iter, r1,r2,rl):
+    def save_model(self, running_avg_ppl, iter, r1,r2,rl,r_avg):
         state = {
             'iter': iter,
             'decoder_state_dict': self.decoder.state_dict(),
@@ -191,7 +191,7 @@ class Transformer(nn.Module):
             #'optimizer': self.optimizer.state_dict(),
             'current_loss': running_avg_ppl
         }
-        model_save_path = os.path.join(self.model_dir, 'model_{}_{:.4f}_{:.4f}_{:.4f}_{:.4f}'.format(iter,running_avg_ppl,r1,r2,rl) )
+        model_save_path = os.path.join(self.model_dir, 'model_{}_{:.4f}_{:.4f}_{:.4f}_{:.4f}_{:.4f}'.format(iter,running_avg_ppl,r1,r2,rl,r_avg) )
         self.best_path = model_save_path
         torch.save(state, model_save_path)
 
@@ -244,10 +244,10 @@ class Transformer(nn.Module):
             # decoded_words.append(['<EOS>'if ni.item() == config.EOS_idx 
             #                             else self.model.index2word[ni.item()] for ni in next_word.view(-1)])
 
-            decoded_words.append(''.join(self.tokenizer.convert_ids_to_tokens(next_word.view(-1).tolist())))
+            print(next_word)  # batch size 
+            decoded_words.append(self.tokenizer.convert_ids_to_tokens(next_word.tolist()))
+            # decoded_words.append(''.join(self.tokenizer.convert_ids_to_tokens(next_word.tolist())))
 
-            # decoded_words.append(['<EOS>' if ni.item() == config.EOS_idx 
-            #                             else self.vocab.index2word[ni.item()] for ni in next_word.view(-1)])
 
             next_word = next_word.data[0]
 
@@ -260,43 +260,10 @@ class Transformer(nn.Module):
 
         sent = []
         for _, row in enumerate(np.transpose(decoded_words)):
+            print(row)
             st = ''
             for e in row:
                 if e == '<EOS>': break
                 else: st+= e + ' '
             sent.append(st)
         return sent
-
-
-    def score_sentence(self, batch):
-        ## pad and other stuff
-        enc_batch, enc_batch_extend_vocab, extra_zeros, _ = get_input_from_batch(batch)
-        dec_batch, _, _ = get_output_from_batch(batch)
-        cand_batch = batch["cand_index"] 
-        hit_1 = 0
-        for i, b in enumerate(enc_batch):
-            # TODO upate encoding
-            ## Encode
-            mask_src = b.unsqueeze(0).data.eq(config.PAD_idx).unsqueeze(1)
-            encoder_outputs = self.encoder(self.embedding(b.unsqueeze(0)),mask_src)
-
-            rank = {}
-            for j,c in enumerate(cand_batch[i]):
-                if config.USE_CUDA: c = c.cuda()
-                # Decode 
-                sos_token = torch.LongTensor([config.SOS_idx] * b.unsqueeze(0).size(0)).unsqueeze(1)
-                if config.USE_CUDA: sos_token = sos_token.cuda()
-                dec_batch_shift = torch.cat((sos_token,c.unsqueeze(0)[:, :-1]),1)
-
-                mask_trg = dec_batch_shift.data.eq(config.PAD_idx).unsqueeze(1)
-                pre_logit, attn_dist = self.decoder(self.embedding(dec_batch_shift),encoder_outputs, (mask_src,mask_trg))
-
-                ## compute output dist
-                logit = self.generator(pre_logit,attn_dist,enc_batch_extend_vocab[i].unsqueeze(0), extra_zeros)
-                loss = self.criterion(logit.contiguous().view(-1, logit.size(-1)), c.unsqueeze(0).contiguous().view(-1))
-                # print("CANDIDATE {}".format(j), loss.item(), math.exp(min(loss.item(), 100)))
-                rank[j] = math.exp(min(loss.item(), 100))
-            s = sorted(rank.items(), key=lambda x: x[1],reverse=False)
-            if(s[1][0]==19): ## because the candidate are sorted in revers order ====> last (19) is the correct one
-                hit_1 += 1
-        return hit_1/float(len(enc_batch))

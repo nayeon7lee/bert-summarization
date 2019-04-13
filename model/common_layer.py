@@ -8,7 +8,7 @@ import torch.nn.init as I
 import numpy as np
 import math
 from utils import config
-from utils.metric import rouge, moses_multi_bleu, _prec_recall_f1_score, entailtment_score
+from utils.metric import rouge
 from utils.beam_omt import Translator
 # from utils.beam_ptr import BeamSearch
 import pprint
@@ -573,14 +573,11 @@ def get_output_from_batch(batch):
 
 def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
 
-    dial,ref,hyp_g,hyp_b, f1_g, f1_b = [],[],[],[],[], []
+    hyp_g, ref, r1, r2, rl, r_avg = [],[],[],[],[],[]
     # bt = BertTokenizer.from_pretrained('bert-base-uncased')
     t = Translator(model)
     l = []
     p = []
-    hit = []
-    ent_g = []
-    ent_b = []
     pbar = tqdm(enumerate(data),total=len(data))
     for j, batch in pbar:
         loss, ppl, _ = model.train_one_batch(batch, train=False)
@@ -588,7 +585,8 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
         p.append(ppl)
         if((j<3 and ty != "test") or ty =="test"): 
             sent_g = model.decoder_greedy(batch) # greedy search
-            print(sent_g)
+            print(len(sent_g))
+            print(len(batch['target_txt']))
             use_beam=False
             if use_beam:
                 sent_b, _ = t.translate_batch(batch) # beam search
@@ -596,27 +594,25 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
             for i, sent in enumerate(sent_g):
                 # hyp_b.append(' '.join(bt.convert_ids_to_tokens(sent_b[i][0])))
                 hyp_g.append(sent) 
-                ref.append(batch["target_batch"][i])
+                'TODO: debug here'
+                ref.append(batch["target_txt"][i])
+                rouges = rouge(sent.split(),batch["target_txt"][i].split())
+                r_avg.append(rouges['rouge_avg/f_score'])
+
                 # f1_g.append(_prec_recall_f1_score(sent.split(),batch["target_batch"][i].split()))
                 # f1_b.append(_prec_recall_f1_score([model.vocab.index2word[idx] for idx in sent_b[i][0]],batch["target_batch"][i].split()))
  
-        pbar.set_description("loss:{:.4f} ppl:{:.1f}".format(np.mean(l),np.mean(p)))
+        pbar.set_description("loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
         if(j>4 and ty=="train"): break
-
     loss = np.mean(l)
     ppl = np.mean(p)
-    # hit = np.mean(hit)
-    ent_g = np.mean(ent_g)
-    ent_b = np.mean(ent_b)
-    # f1_g = np.mean(f1_g)
-    # f1_b = np.mean(f1_b)
-    # bleu_score_g = moses_multi_bleu(np.array(hyp_g), np.array(ref), lowercase=True) 
-    # bleu_score_b = moses_multi_bleu(np.array(hyp_b), np.array(ref), lowercase=True) 
+    r_avg = np.mean(r_avg)
+
     if(verbose):
         print("----------------------------------------------------------------------")
         print("----------------------------------------------------------------------")
-        print("loss: {} ppl: {}".format(loss, ppl))
+        print("loss: {} ppl: {} r_avg: {}".format(loss, ppl, r_avg))
         # print_all(dial,ref,hyp_g,hyp_b,max_print=3 if ty != "test" else 100000000 )
         # print("EVAL\tLoss\tPeplexity\tHit-1\tF1_g\tF1_b\tEntl_g\tEntl_b\tBleu_g\tBleu_b")
         # print("{}\t{:.4f}\t{:.4f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(ty,loss,ppl,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b))
-    return loss,ppl #,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b
+    return loss, ppl, r_avg #,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b
