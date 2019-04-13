@@ -36,9 +36,9 @@ for e in range(config.epochs):
         loss, ppl, _ = model.train_one_batch(d)
         l.append(loss)
         p.append(ppl)
-        pbar.set_description("loss:{:.4f} ppl:{:.1f}".format(np.mean(l),np.mean(p)))
+        pbar.set_description("TRAIN loss:{:.4f} ppl:{:.1f}".format(np.mean(l),np.mean(p)))
 
-        if i%eval_iterval==eval_iterval:
+        if i%eval_iterval==0:
             # evaluate 3 samples from val dataset.
             loss,ppl_val,r_avg = evaluate(model,val_dl,model_name=config.model,ty="train")
             # each epoch is long,so just do early stopping here. 

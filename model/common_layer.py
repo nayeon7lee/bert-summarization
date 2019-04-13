@@ -572,7 +572,6 @@ def get_output_from_batch(batch):
     return dec_batch, target_gate, target_ptr #, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
 
 def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
-    print("\nStart evaluation")
     hyp_g, ref, r1, r2, rl, r_avg = [],[],[],[],[],[]
     # bt = BertTokenizer.from_pretrained('bert-base-uncased')
     t = Translator(model)
@@ -600,7 +599,7 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
                 r1.append(rouges['rouge_1/f_score'])
                 r2.append(rouges['rouge_2/f_score'])
                 rl.append(rouges['rouge_l/f_score'])
-        pbar.set_description("loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
+        pbar.set_description("EVAL loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
         if(j>4 and ty=="train"): break
     loss = np.mean(l)
     ppl = np.mean(p)
@@ -610,7 +609,7 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
     rl = np.mean(rl)
 
     if(verbose):
-        print("\nloss: {:.4f} ppl: {:.1f} r_avg: {:.2f} r1: {:.2f} r2: {:.2f} r3: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
+        print("\nEVAL loss: {:.4f} ppl: {:.1f} r_avg: {:.2f} r1: {:.2f} r2: {:.2f} r3: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
         # print_all(dial,ref,hyp_g,hyp_b,max_print=3 if ty != "test" else 100000000 )
         # print("EVAL\tLoss\tPeplexity\tHit-1\tF1_g\tF1_b\tEntl_g\tEntl_b\tBleu_g\tBleu_b")
         # print("{}\t{:.4f}\t{:.4f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(ty,loss,ppl,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b))
