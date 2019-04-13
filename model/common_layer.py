@@ -8,14 +8,13 @@ import torch.nn.init as I
 import numpy as np
 import math
 from utils import config
-from utils.metric import rouge
 from utils.beam_omt import Translator
 # from utils.beam_ptr import BeamSearch
 import pprint
 from tqdm import tqdm
 pp = pprint.PrettyPrinter(indent=1)
 from pytorch_pretrained_bert.tokenization import BertTokenizer
-
+from rouge import Rouge
 
 class EncoderLayer(nn.Module):
     """
@@ -573,8 +572,9 @@ def get_output_from_batch(batch):
 
 def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
     hyp_g, ref, r1, r2, rl, r_avg = [],[],[],[],[],[]
-    # bt = BertTokenizer.from_pretrained('bert-base-uncased')
     t = Translator(model)
+    rouge = Rouge()
+
     l = []
     p = []
     pbar = tqdm(enumerate(data),total=len(data))
@@ -591,14 +591,15 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
                 sent_b, _ = t.translate_batch(batch) # beam search
 
             for i, sent in enumerate(sent_g):
-                # hyp_b.append(' '.join(bt.convert_ids_to_tokens(sent_b[i][0])))
                 hyp_g.append(sent) 
                 ref.append(batch["target_txt"][i])
-                rouges = rouge(sent.split(),batch["target_txt"][i].split())
-                r_avg.append(rouges['rouge_avg/f_score'])
-                r1.append(rouges['rouge_1/f_score'])
-                r2.append(rouges['rouge_2/f_score'])
-                rl.append(rouges['rouge_l/f_score'])
+                rouges = rouge.get_scores(sent,batch["target_txt"][i])[0] # (hyp, ref)
+
+                r1_val,r2_val,rl_val = rouges['rouge-1']["f"], rouges['rouge-2']["f"], rouges['rouge-l']["f"]
+                r1.append(r1_val)
+                r2.append(r2_val)
+                rl.append(rl_val)
+                r_avg.append(np.mean([r1_val,r2_val,rl_val]))
         pbar.set_description("EVAL loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
         if(j>4 and ty=="train"): break
     loss = np.mean(l)
@@ -609,7 +610,10 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
     rl = np.mean(rl)
 
     if(verbose):
-        print("\nEVAL loss: {:.4f} ppl: {:.1f} r_avg: {:.2f} r1: {:.2f} r2: {:.2f} r3: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
+        print("\nEVAL loss: {:.4f} ppl: {:.1f} r_avg: [{:.2f}] r1: {:.2f} r2: {:.2f} rl: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
+        for hyp, gold in zip(hyp_g, ref):
+            print("PRED: {}".format(hyp))
+            print("GOLD: {}".format(gold))
         # print_all(dial,ref,hyp_g,hyp_b,max_print=3 if ty != "test" else 100000000 )
         # print("EVAL\tLoss\tPeplexity\tHit-1\tF1_g\tF1_b\tEntl_g\tEntl_b\tBleu_g\tBleu_b")
         # print("{}\t{:.4f}\t{:.4f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(ty,loss,ppl,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b))
