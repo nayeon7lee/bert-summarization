@@ -572,7 +572,7 @@ def get_output_from_batch(batch):
     return dec_batch, target_gate, target_ptr #, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
 
 def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
-
+    print("\nStart evaluation")
     hyp_g, ref, r1, r2, rl, r_avg = [],[],[],[],[],[]
     # bt = BertTokenizer.from_pretrained('bert-base-uncased')
     t = Translator(model)
@@ -585,8 +585,8 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
         p.append(ppl)
         if((j<3 and ty != "test") or ty =="test"): 
             sent_g = model.decoder_greedy(batch) # greedy search
-            print(len(sent_g))
-            print(len(batch['target_txt']))
+            # print(sent_g)
+            # print(batch['target_txt'])
             use_beam=False
             if use_beam:
                 sent_b, _ = t.translate_batch(batch) # beam search
@@ -594,24 +594,23 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
             for i, sent in enumerate(sent_g):
                 # hyp_b.append(' '.join(bt.convert_ids_to_tokens(sent_b[i][0])))
                 hyp_g.append(sent) 
-                'TODO: debug here'
                 ref.append(batch["target_txt"][i])
                 rouges = rouge(sent.split(),batch["target_txt"][i].split())
                 r_avg.append(rouges['rouge_avg/f_score'])
-
-                # f1_g.append(_prec_recall_f1_score(sent.split(),batch["target_batch"][i].split()))
-                # f1_b.append(_prec_recall_f1_score([model.vocab.index2word[idx] for idx in sent_b[i][0]],batch["target_batch"][i].split()))
- 
+                r1.append(rouges['rouge_1/f_score'])
+                r2.append(rouges['rouge_2/f_score'])
+                rl.append(rouges['rouge_l/f_score'])
         pbar.set_description("loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
         if(j>4 and ty=="train"): break
     loss = np.mean(l)
     ppl = np.mean(p)
     r_avg = np.mean(r_avg)
+    r1 = np.mean(r1)
+    r2 = np.mean(r2)
+    rl = np.mean(rl)
 
     if(verbose):
-        print("----------------------------------------------------------------------")
-        print("----------------------------------------------------------------------")
-        print("loss: {} ppl: {} r_avg: {}".format(loss, ppl, r_avg))
+        print("\nloss: {:.4f} ppl: {:.1f} r_avg: {:.2f} r1: {:.2f} r2: {:.2f} r3: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
         # print_all(dial,ref,hyp_g,hyp_b,max_print=3 if ty != "test" else 100000000 )
         # print("EVAL\tLoss\tPeplexity\tHit-1\tF1_g\tF1_b\tEntl_g\tEntl_b\tBleu_g\tBleu_b")
         # print("{}\t{:.4f}\t{:.4f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(ty,loss,ppl,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b))
