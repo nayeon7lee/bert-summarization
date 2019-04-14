@@ -261,7 +261,7 @@ def collate_fn(data):
     input_features = item_info['input_feature']
     input_ids_batch = torch.tensor([f.input_ids for f in input_features], dtype=torch.long)
     input_mask_batch = torch.tensor([f.input_mask for f in input_features], dtype=torch.long)
-    example_index_batch = torch.zeros(input_ids_batch.size(0), dtype=torch.long)
+    example_index_batch = torch.zeros(input_ids_batch.size(), dtype=torch.long)
     # example_index_batch = torch.arange(input_ids_batch.size(0), dtype=torch.long)
     target_batch = torch.tensor(item_info['target_feature'], dtype=torch.long)
     # target_batch, target_lengths = merge(item_info['target_feature'])
@@ -272,9 +272,9 @@ def collate_fn(data):
     target_batch = target_batch.transpose(0, 1)
     
     if config.USE_CUDA:
-        input_ids_batch = input_ids_batch.cuda()
-        input_mask_batch = input_mask_batch.cuda()
-        example_index_batch = example_index_batch.cuda()
+        input_ids_batch = input_ids_batch.cuda(device=1)
+        input_mask_batch = input_mask_batch.cuda(device=1)
+        example_index_batch = example_index_batch.cuda(device=1)
         target_batch = target_batch.cuda()
 
     d = {}
@@ -311,24 +311,23 @@ def collate_fn(data):
     return d 
 
 def get_dataloaders(is_small=False):
-    # (train_a, train_s), (val_a, val_s), (test_a, test_s) = load_examples()
     train, val, test = load_examples(is_small)
 
-    train_dataset = Dataset(*train) # train_a, train_s
+    train_dataset = Dataset(*train)
     train_dl = torch.utils.data.DataLoader(dataset=train_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
                                             shuffle=True)
-    val_dataset = Dataset(*val) # val_a, val_s
+    val_dataset = Dataset(*val)
     val_dl = torch.utils.data.DataLoader(dataset=val_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
                                             shuffle=True)
-    test_dataset = Dataset(*test) # test_a, test_s
+    test_dataset = Dataset(*test) 
     test_dl = torch.utils.data.DataLoader(dataset=test_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
-                                            shuffle=True)
+                                            shuffle=False)
     return train_dl, val_dl, test_dl
 
 if __name__ == "__main__":

@@ -10,4 +10,4 @@
 2. Run: `python news_data_reader.py` to create pickle file that will be used in my data-loader
 
 ### Running the model
-`python main.py --cuda --batch_size=2 --noam`
+`CUDA_VISIBLE_DEVICES=3 python main.py --cuda --batch_size=2 --hop 4 --heads 6 --small`

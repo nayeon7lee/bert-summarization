@@ -2,16 +2,27 @@ import argparse
 import os
 import torch
 
+# constants
+SENTENCE_START = '<s>'
+SENTENCE_END = '</s>'
+
+PAD_TOKEN = '[PAD]' # This has a vocab id, which is used to pad the encoder input, decoder input and target sequence
+UNKNOWN_TOKEN = '[UNK]' # This has a vocab id, which is used to represent out-of-vocabulary words
+START_DECODING = '[START]' # This has a vocab id, which is used at the start of every decoder input sequence
+STOP_DECODING = '[STOP]' # This has a vocab id, which is used at the end of untruncated target sequences
+BERT_START = '[CLS]'
+seq_len = 100
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--persona", action="store_true")
-parser.add_argument("--hidden_dim", type=int, default=3072)
+parser.add_argument("--hidden_dim", type=int, default=100) #3072
 parser.add_argument("--emb_dim", type=int, default=768)
 parser.add_argument("--batch_size", type=int, default=36)
 parser.add_argument("--lr", type=float, default=0.0003)
 parser.add_argument("--max_grad_norm", type=float, default=2.0)
-parser.add_argument("--max_enc_steps", type=int, default=512)
-parser.add_argument("--max_dec_steps", type=int, default=100)
-parser.add_argument("--min_dec_steps", type=int, default=35)
+parser.add_argument("--max_enc_steps", type=int, default=400)
+parser.add_argument("--max_dec_steps", type=int, default=seq_len) #100
+parser.add_argument("--min_dec_steps", type=int, default=0) #35
 parser.add_argument("--beam_size", type=int, default=5)
 parser.add_argument("--save_path", type=str, default="save/")
 parser.add_argument("--save_path_dataset", type=str, default="save/")
@@ -28,13 +39,13 @@ parser.add_argument("--split_copy_head", action="store_true")
 parser.add_argument("--small", action="store_true", help="using smaller data. suitable for debug/testing")
 
 ## transformer 
-parser.add_argument("--hop", type=int, default=12)
+parser.add_argument("--hop", type=int, default=6) # 12
 parser.add_argument("--heads", type=int, default=12) 
 parser.add_argument("--depth", type=int, default=48)
 parser.add_argument("--filter", type=int, default=50)
 
 ## BERT
-parser.add_argument("--max_seq_length", default=512, type=int,
+parser.add_argument("--max_seq_length", default=seq_len, type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. Sequences longer "
                             "than this will be truncated, and sequences shorter than this will be padded.")
 
@@ -42,17 +53,6 @@ arg = parser.parse_args()
 print(arg)
 model = arg.model
 persona = arg.persona
-
-
-# constants
-SENTENCE_START = '<s>'
-SENTENCE_END = '</s>'
-
-PAD_TOKEN = '[PAD]' # This has a vocab id, which is used to pad the encoder input, decoder input and target sequence
-UNKNOWN_TOKEN = '[UNK]' # This has a vocab id, which is used to represent out-of-vocabulary words
-START_DECODING = '[START]' # This has a vocab id, which is used at the start of every decoder input sequence
-STOP_DECODING = '[STOP]' # This has a vocab id, which is used at the end of untruncated target sequences
-BERT_START = '[CLS]'
 
 # Hyperparameters
 hidden_dim= arg.hidden_dim

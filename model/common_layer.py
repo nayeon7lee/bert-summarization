@@ -539,7 +539,6 @@ def get_input_from_batch(batch):
         if batch["max_art_oovs"] > 0:
             extra_zeros = torch.zeros((batch_size, batch["max_art_oovs"]))
 
-    'TODO: coverage ??? '
     coverage = None
     if config.is_coverage:
         coverage = torch.zeros(enc_batch.size())
@@ -576,13 +575,11 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
     rouge = Rouge()
 
     l = []
-    p = []
     pbar = tqdm(enumerate(data),total=len(data))
     for j, batch in pbar:
-        loss, ppl, _ = model.train_one_batch(batch, train=False)
-        l.append(loss)
-        p.append(ppl)
-        if((j<3 and ty != "test") or ty =="test"): 
+        loss = model.train_one_batch(batch, train=False)
+        l.append(loss.item())
+        if((j<2 and ty != "test") or ty =="test"): 
             sent_g = model.decoder_greedy(batch) # greedy search
             # print(sent_g)
             # print(batch['target_txt'])
@@ -600,21 +597,21 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
                 r2.append(r2_val)
                 rl.append(rl_val)
                 r_avg.append(np.mean([r1_val,r2_val,rl_val]))
-        pbar.set_description("EVAL loss:{:.4f} ppl:{:.1f} r_avg:{:.2f}".format(np.mean(l),np.mean(p),np.mean(r_avg)))
-        if(j>4 and ty=="train"): break
+        pbar.set_description("EVAL loss:{:.4f} r_avg:{:.2f}".format(np.mean(l),np.mean(r_avg)))
+        if(j>2 and ty=="train"): break
     loss = np.mean(l)
-    ppl = np.mean(p)
     r_avg = np.mean(r_avg)
     r1 = np.mean(r1)
     r2 = np.mean(r2)
     rl = np.mean(rl)
 
     if(verbose):
-        print("\nEVAL loss: {:.4f} ppl: {:.1f} r_avg: [{:.2f}] r1: {:.2f} r2: {:.2f} rl: {:.2f}".format(loss, ppl, r_avg, r1, r2, rl))
+        print("\nEVAL loss: {:.4f} r_avg: [{:.2f}] r1: {:.2f} r2: {:.2f} rl: {:.2f}".format(loss, r_avg, r1, r2, rl))
         for hyp, gold in zip(hyp_g, ref):
-            print("PRED: {}".format(hyp))
-            print("GOLD: {}".format(gold))
-        # print_all(dial,ref,hyp_g,hyp_b,max_print=3 if ty != "test" else 100000000 )
-        # print("EVAL\tLoss\tPeplexity\tHit-1\tF1_g\tF1_b\tEntl_g\tEntl_b\tBleu_g\tBleu_b")
-        # print("{}\t{:.4f}\t{:.4f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}".format(ty,loss,ppl,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b))
-    return loss, ppl, r_avg #,hit,f1_g,f1_b,ent_g,ent_b,bleu_score_g,bleu_score_b
+            print("HYP: ")
+            print(hyp)
+            print("GOLD: ")
+            print(gold)
+            # print("PRED: {}".format(hyp))
+            # print("GOLD: {}".format(gold))
+    return loss, r_avg
