@@ -272,9 +272,9 @@ def collate_fn(data):
     target_batch = target_batch.transpose(0, 1)
     
     if config.USE_CUDA:
-        input_ids_batch = input_ids_batch.cuda(device=1)
-        input_mask_batch = input_mask_batch.cuda(device=1)
-        example_index_batch = example_index_batch.cuda(device=1)
+        input_ids_batch = input_ids_batch.cuda()
+        input_mask_batch = input_mask_batch.cuda()
+        example_index_batch = example_index_batch.cuda()
         target_batch = target_batch.cuda()
 
     d = {}

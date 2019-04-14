@@ -39,7 +39,7 @@ parser.add_argument("--split_copy_head", action="store_true")
 parser.add_argument("--small", action="store_true", help="using smaller data. suitable for debug/testing")
 
 ## transformer 
-parser.add_argument("--hop", type=int, default=6) # 12
+parser.add_argument("--hop", type=int, default=12) # 12
 parser.add_argument("--heads", type=int, default=12) 
 parser.add_argument("--depth", type=int, default=48)
 parser.add_argument("--filter", type=int, default=50)

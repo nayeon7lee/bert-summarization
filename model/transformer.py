@@ -167,11 +167,11 @@ class Summarizer(nn.Module):
             self.embedding.load_state_dict(state['embedding_dict'])
 
         if (config.USE_CUDA):
-            self.encoder = self.encoder.cuda(device=1)
+            self.encoder = self.encoder.cuda(device=0)
             self.decoder = self.decoder.cuda(device=0)
             self.generator = self.generator.cuda(device=0)
             self.criterion = self.criterion.cuda(device=0)
-            self.embedding = self.embedding.cuda(device=1)
+            self.embedding = self.embedding.cuda(device=0)
         self.model_dir = config.save_path
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
@@ -206,14 +206,11 @@ class Summarizer(nn.Module):
 
         # # Draft Decoder 
         sos_token = torch.LongTensor([config.SOS_idx] * input_ids_batch.size(0)).unsqueeze(1)
-        if config.USE_CUDA: 
-            encoder_outputs = encoder_outputs.cuda(device=0)
-            sos_token = sos_token.cuda(device=0)
-            # self.embedding = self.embedding.cuda(device=0)
+        if config.USE_CUDA: sos_token = sos_token.cuda(device=0)
 
         dec_batch_shift = torch.cat((sos_token,dec_batch[:, :-1]),1) # shift the decoder input (summary) by one step
         mask_trg = dec_batch_shift.data.eq(config.PAD_idx).unsqueeze(1)
-        pre_logit1, attn_dist1 = self.decoder(self.embedding(dec_batch_shift.cuda(device=1)).cuda(device=0),encoder_outputs, (None,mask_trg))
+        pre_logit1, attn_dist1 = self.decoder(self.embedding(dec_batch_shift),encoder_outputs, (None,mask_trg))
         
         # print(pre_logit1.size())
         ## compute output dist
@@ -221,8 +218,8 @@ class Summarizer(nn.Module):
         ## loss: NNL if ptr else Cross entropy
         loss1 = self.criterion(logit1.contiguous().view(-1, logit1.size(-1)), dec_batch.contiguous().view(-1))
         
-        if(train):
-            loss1.backward()
+        # if(train):
+        #     loss1.backward()
 
         # Refine Decoder 
         pre_logit2, attn_dist2 = self.generate_refinement_output(encoder_outputs, input_ids_batch, example_index_batch, extra_zeros, input_mask_batch)
@@ -231,10 +228,11 @@ class Summarizer(nn.Module):
         logit2 = self.generator(pre_logit2,attn_dist2,enc_batch_extend_vocab, extra_zeros, copy_gate=copy_gate, copy_ptr=copy_ptr, mask_trg= None)
         loss2 = self.criterion(logit2.contiguous().view(-1, logit2.size(-1)), dec_batch.contiguous().view(-1))
 
+        loss = loss1+loss2
         if(train):
-            loss2.backward()
+            loss.backward()
             self.optimizer.step()
-        return loss1+loss2
+        return loss
 
     def generate_refinement_output(self, encoder_outputs, input_ids_batch, example_index_batch, extra_zeros, input_mask_batch):
         # mask_trg = ys.data.eq(config.PAD_idx).unsqueeze(1)
@@ -251,9 +249,8 @@ class Summarizer(nn.Module):
                     mask[i]=0
                     context_input_mask_batch.append(mask)
 
-                if config.USE_CUDA: 
-                    context_input_mask_batch = torch.stack(context_input_mask_batch).cuda(device=1)
-                    self.embedding = self.embedding.cuda(device=1)
+                context_input_mask_batch = torch.stack(context_input_mask_batch) #.cuda(device=0)
+                    # self.embedding = self.embedding.cuda(device=0)
                 context_vector, _ = self.encoder(input_ids_batch, token_type_ids=example_index_batch, attention_mask=context_input_mask_batch, output_all_encoded_layers=False)
                 
                 if config.USE_CUDA: context_vector = context_vector.cuda(device=0)
@@ -277,13 +274,11 @@ class Summarizer(nn.Module):
             encoder_outputs, _ = self.encoder(input_ids_batch, token_type_ids=enc_batch_extend_vocab, attention_mask=input_mask_batch, output_all_encoded_layers=False)
 
         ys = torch.ones(1, 1).fill_(config.SOS_idx).long()
-        if config.USE_CUDA:
-            encoder_outputs = encoder_outputs.cuda(device=0)
-            ys = ys.cuda()
+        if config.USE_CUDA: ys = ys.cuda()
         mask_trg = ys.data.eq(config.PAD_idx).unsqueeze(1)
         decoded_words = []
         for i in range(config.max_dec_step):
-            out, attn_dist = self.decoder(self.embedding(ys.cuda(device=1)).cuda(device=0),encoder_outputs, (None,mask_trg))
+            out, attn_dist = self.decoder(self.embedding(ys),encoder_outputs, (None,mask_trg))
             prob = self.generator(out,attn_dist,enc_batch_extend_vocab, extra_zeros)
             _, next_word = torch.max(prob[:, -1], dim = 1)
 
