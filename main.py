@@ -8,13 +8,13 @@ from tqdm import tqdm
 import os
 import time 
 import numpy as np 
-from utils.news_data_reader import get_dataloaders, InputExample, InputFeatures
+from utils.data import get_dataloaders, InputExample, InputFeatures
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def train_draft():
-    train_dl, val_dl, test_dl = get_dataloaders(is_small=config.small)
+    train_dl, val_dl, test_dl, tokenizer = get_dataloaders(is_small=config.small)
 
     if(config.test):
         print("Test model",config.model)
@@ -22,7 +22,7 @@ def train_draft():
         evaluate(model,data_loader_test,model_name=config.model,ty='test')
         exit(0)
 
-    model = Summarizer(True)
+    model = Summarizer(is_draft=True, toeknizer=tokenizer)
     print("TRAINABLE PARAMETERS",count_parameters(model))
     print("Use Cuda: ", config.USE_CUDA)
 
@@ -41,7 +41,6 @@ def train_draft():
 
             if i%eval_iterval==0:
                 # model.eval()
-                # evaluate 3 samples from val dataset.
                 loss,r_avg = evaluate(model,val_dl,model_name=config.model,ty="train")
                 # each epoch is long,so just do early stopping here. 
                 if(r_avg > best_rouge):

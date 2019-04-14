@@ -556,6 +556,9 @@ def get_input_from_batch(batch):
 
 def get_output_from_batch(batch):
     dec_batch = batch["target_batch"].transpose(0,1)
+    dec_mask_batch = batch["target_mask_batch"]
+    dec_index_batch = batch["target_index_batch"]
+
     target_gate,target_ptr = None, None
     if(config.pointer_gen):
         target_gate = batch["target_gate"]
@@ -567,25 +570,26 @@ def get_output_from_batch(batch):
     # dec_lens_var = batch["target_lengths"]
     # dec_padding_mask = sequence_mask(dec_lens_var, max_len=max_dec_len).float()
 
-    return dec_batch, target_gate, target_ptr #, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
+    return dec_batch, dec_mask_batch, dec_index_batch, target_gate, target_ptr #, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
 
 def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
     hyp_g, ref, r1, r2, rl, r_avg = [],[],[],[],[],[]
     t = Translator(model)
     rouge = Rouge()
 
-    l = []
+    l, loss = [], None
     pbar = tqdm(enumerate(data),total=len(data))
     for j, batch in pbar:
-        loss = model.train_one_batch(batch, train=False)
-        l.append(loss.item())
-        if((j<2 and ty != "test") or ty =="test"): 
-            sent_g = model.decoder_greedy(batch) # greedy search
-            # print(sent_g)
-            # print(batch['target_txt'])
-            use_beam=False
-            if use_beam:
-                sent_b, _ = t.translate_batch(batch) # beam search
+        if ty!="test":
+            loss = model.train_one_batch(batch, train=False)
+            l.append(loss.item())
+            
+        if((j<=1 and ty != "test") or ty =="test"): 
+            if ty!='test':
+                sent_g = model.decoder_greedy(batch) # 1-decoder generation. for testing
+            else:
+                sent_g = model.eval_one_batch(batch) # 2-decoder generation.
+            # sent_b, _ = t.translate_batch(batch) # beam search
 
             for i, sent in enumerate(sent_g):
                 hyp_g.append(sent) 
@@ -598,8 +602,8 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
                 rl.append(rl_val)
                 r_avg.append(np.mean([r1_val,r2_val,rl_val]))
         pbar.set_description("EVAL loss:{:.4f} r_avg:{:.2f}".format(np.mean(l),np.mean(r_avg)))
-        if(j>2 and ty=="train"): break
-    loss = np.mean(l)
+        if(j>1 and ty=="train"): break
+    if l: loss = np.mean(l)
     r_avg = np.mean(r_avg)
     r1 = np.mean(r1)
     r2 = np.mean(r2)
@@ -612,6 +616,4 @@ def evaluate(model, data, model_name='trs', ty='valid', verbose=True):
             print(hyp)
             print("GOLD: ")
             print(gold)
-            # print("PRED: {}".format(hyp))
-            # print("GOLD: {}".format(gold))
     return loss, r_avg

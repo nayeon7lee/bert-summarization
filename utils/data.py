@@ -149,13 +149,13 @@ def create_examples(data_path):
 'Dataset'
 class Dataset(data.Dataset):
     'Custom data.Dataset compatible with data.DataLoader.'
-    def __init__(self, articles, summaries):
+    def __init__(self, tokenizer, articles, summaries):
         """Reads news data from CNN/Daily Mail data files."""
         self.articles = articles
         self.summaries = summaries
         self.total_num = len(self.summaries)
 
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.bert_tokenizer = tokenizer
 
     def __getitem__(self, idx):
         item = {}
@@ -167,7 +167,8 @@ class Dataset(data.Dataset):
         # item['input_feature']={"input_ids":input_ids, "input_mask":input_mask, "example_index":example_index}
         
         item['input_feature']=self.preprocess(self.articles[idx], is_bert=True) # BERT input features  
-        item['target_feature']=self.preprocess(self.summaries[idx]) # WordPiece features only
+        item['target_feature']=self.preprocess(self.summaries[idx], is_bert=True) # BERT target feature
+        # item['target_feature']=self.preprocess(self.summaries[idx], is_bert=False) # WordPiece features only
         item['target_txt']=self.summaries[idx].text_a
 
         if config.pointer_gen:
@@ -263,12 +264,13 @@ def collate_fn(data):
     input_mask_batch = torch.tensor([f.input_mask for f in input_features], dtype=torch.long)
     example_index_batch = torch.zeros(input_ids_batch.size(), dtype=torch.long)
     # example_index_batch = torch.arange(input_ids_batch.size(0), dtype=torch.long)
-    target_batch = torch.tensor(item_info['target_feature'], dtype=torch.long)
-    # target_batch, target_lengths = merge(item_info['target_feature'])
 
-    # input_ids_batch = input_ids_batch.transpose(0, 1) # [batch_size, feature_size] -> [feature_size, batch_size]
-    # input_mask_batch = input_mask_batch.transpose(0, 1)
-    # example_index_batch = example_index_batch.transpose(0, 1)
+    target_feature = item_info['target_feature']
+    target_batch = torch.tensor([f.input_ids for f in target_feature], dtype=torch.long)
+    # input_ids_batch == target_batch
+    target_mask_batch = torch.tensor([f.input_mask for f in target_feature], dtype=torch.long)
+    target_index_batch = torch.zeros(target_batch.size(), dtype=torch.long)
+
     target_batch = target_batch.transpose(0, 1)
     
     if config.USE_CUDA:
@@ -276,15 +278,18 @@ def collate_fn(data):
         input_mask_batch = input_mask_batch.cuda()
         example_index_batch = example_index_batch.cuda()
         target_batch = target_batch.cuda()
+        target_mask_batch = target_mask_batch.cuda()
+        target_index_batch = target_index_batch.cuda()
 
     d = {}
     d["input_ids_batch"]=input_ids_batch
     d["input_mask_batch"]=input_mask_batch
     d["example_index_batch"]=example_index_batch
-    d["target_batch"] = target_batch
-    d["target_txt"] = item_info["target_txt"]
 
-    d["target_feature"] = item_info["target_feature"]
+    d["target_batch"] = target_batch
+    d["target_mask_batch"] = target_mask_batch
+    d["target_index_batch"] = target_index_batch
+    d["target_txt"] = item_info["target_txt"]
 
     # pointer network
     if config.pointer_gen and 'input_ext_vocab_batch' in item_info:
@@ -313,22 +318,60 @@ def collate_fn(data):
 def get_dataloaders(is_small=False):
     train, val, test = load_examples(is_small)
 
-    train_dataset = Dataset(*train)
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    train_dataset = Dataset(tokenizer, *train)
     train_dl = torch.utils.data.DataLoader(dataset=train_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
                                             shuffle=True)
-    val_dataset = Dataset(*val)
+    val_dataset = Dataset(tokenizer, *val)
     val_dl = torch.utils.data.DataLoader(dataset=val_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
                                             shuffle=True)
-    test_dataset = Dataset(*test) 
+    test_dataset = Dataset(tokenizer, *test) 
     test_dl = torch.utils.data.DataLoader(dataset=test_dataset,
                                             batch_size=config.batch_size, 
                                             collate_fn=collate_fn,
                                             shuffle=False)
-    return train_dl, val_dl, test_dl
+    return train_dl, val_dl, test_dl, tokenizer
+
+
+def text_input2bert_input(example, bert_tokenizer, seq_length=config.max_seq_length):
+    tokens_a = bert_tokenizer.tokenize(example.text_a)
+    tokens_b = None
+    # Account for [CLS] and [SEP] with "- 2"
+    if len(tokens_a) > seq_length - 2:
+        tokens_a = tokens_a[0:(seq_length - 2)]
+
+    tokens = [] # equals raw text tokens 
+    input_type_ids = [] # equals segments_ids
+    tokens.append("[CLS]")
+    input_type_ids.append(0)
+    for token in tokens_a:
+        tokens.append(token)
+        input_type_ids.append(0)
+    tokens.append("[SEP]")
+    input_type_ids.append(0)
+
+    input_ids = bert_tokenizer.convert_tokens_to_ids(tokens) # WordPiece embedding rep
+
+    # The mask has 1 for real tokens and 0 for padding tokens. Only real
+    # tokens are attended to.
+    input_mask = [1] * len(input_ids)
+
+    # Zero-pad up to the sequence length.
+    while len(input_ids) < seq_length:
+        input_ids.append(0)
+        input_mask.append(0)
+        input_type_ids.append(0)
+
+    input_ids_batch = torch.tensor(input_ids, dtype=torch.long)
+    input_mask_batch = torch.tensor(input_mask, dtype=torch.long)
+    example_index_batch = torch.zeros(input_ids_batch.size(), dtype=torch.long)
+
+    return input_ids_batch, input_mask_batch, example_index_batch
 
 if __name__ == "__main__":
     # # 1. for generating the pickle files from chunked.bin data files

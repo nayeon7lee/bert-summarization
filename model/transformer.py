@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 import numpy as np
 import math
+from utils.data import text_input2bert_input
 from model.common_layer import EncoderLayer, DecoderLayer, MultiHeadAttention, Conv, PositionwiseFeedForward, LayerNorm , _gen_bias_mask ,_gen_timing_signal, LabelSmoothing, NoamOpt, _get_attn_subsequent_mask,  get_input_from_batch, get_output_from_batch
 from utils import config
 import random
@@ -129,9 +130,10 @@ class Generator(nn.Module):
             return F.log_softmax(logit,dim=-1)
 
 class Summarizer(nn.Module):
-    def __init__(self, is_draft, model_file_path=None, is_eval=False, load_optim=False):
+    def __init__(self, is_draft, toeknizer, model_file_path=None, is_eval=False, load_optim=False):
         super(Summarizer, self).__init__()
         self.is_draft = is_draft
+        self.toeknizer = toeknizer
         if is_draft: self.encoder = BertModel.from_pretrained('bert-base-uncased')
         else: BertForMaskedLM.from_pretrained('bert-base-uncased')
         self.encoder.eval() # always in eval mode
@@ -193,7 +195,7 @@ class Summarizer(nn.Module):
     def train_one_batch(self, batch, train=True):
         ## pad and other stuff
         input_ids_batch, input_mask_batch, example_index_batch, enc_batch_extend_vocab, extra_zeros, _ = get_input_from_batch(batch)
-        dec_batch, copy_gate, copy_ptr = get_output_from_batch(batch)
+        dec_batch, dec_mask_batch, dec_index_batch, copy_gate, copy_ptr = get_output_from_batch(batch)
         
         if(config.noam):
             self.optimizer.optimizer.zero_grad()
@@ -217,22 +219,42 @@ class Summarizer(nn.Module):
         logit1 = self.generator(pre_logit1,attn_dist1,enc_batch_extend_vocab, extra_zeros, copy_gate=copy_gate, copy_ptr=copy_ptr, mask_trg= mask_trg)
         ## loss: NNL if ptr else Cross entropy
         loss1 = self.criterion(logit1.contiguous().view(-1, logit1.size(-1)), dec_batch.contiguous().view(-1))
-        
-        # if(train):
-        #     loss1.backward()
 
-        # Refine Decoder 
-        pre_logit2, attn_dist2 = self.generate_refinement_output(encoder_outputs, input_ids_batch, example_index_batch, extra_zeros, input_mask_batch)
+        # Refine Decoder - train using gold label TARGET
+        'TODO: turn gold-target-text into BERT insertable representation'
+        pre_logit2, attn_dist2 = self.generate_refinement_output(encoder_outputs, dec_batch, dec_index_batch, extra_zeros, dec_mask_batch)
         # pre_logit2, attn_dist2 = self.decoder(self.embedding(encoded_gold_target),encoder_outputs, (None,mask_trg))
-        # print(pre_logit2.size())
+        
         logit2 = self.generator(pre_logit2,attn_dist2,enc_batch_extend_vocab, extra_zeros, copy_gate=copy_gate, copy_ptr=copy_ptr, mask_trg= None)
         loss2 = self.criterion(logit2.contiguous().view(-1, logit2.size(-1)), dec_batch.contiguous().view(-1))
 
         loss = loss1+loss2
-        if(train):
+
+        if train:
             loss.backward()
             self.optimizer.step()
         return loss
+
+    def eval_one_batch(self, batch):
+        draft_seq_batch = self.decoder_greedy(batch)
+
+        d_seq_input_ids_batch, d_seq_input_mask_batch, d_seq_example_index_batch = text_input2bert_input(draft_seq_batch, self.tokenizer)
+        pre_logit2, attn_dist2 = self.generate_refinement_output(
+            encoder_outputs, d_seq_input_ids_batch, d_seq_example_index_batch, extra_zeros, d_seq_input_mask_batch)
+
+        decoded_words, sent = [], []
+        for out, attn_dist in zip(pre_logit2, attn_dist2):
+            prob = self.generator(out,attn_dist,enc_batch_extend_vocab, extra_zeros, copy_gate=copy_gate, copy_ptr=copy_ptr, mask_trg= None)
+            _, next_word = torch.max(prob[:, -1], dim = 1)
+            decoded_words.append(self.tokenizer.convert_ids_to_tokens(next_word.tolist()))
+
+        for _, row in enumerate(np.transpose(decoded_words)):
+            st = ''
+            for e in row:
+                if e == '<EOS>' or e.strip() == '<PAD>': break
+                else: st+= e + ' '
+            sent.append(st)
+        return sent
 
     def generate_refinement_output(self, encoder_outputs, input_ids_batch, example_index_batch, extra_zeros, input_mask_batch):
         # mask_trg = ys.data.eq(config.PAD_idx).unsqueeze(1)
@@ -257,15 +279,14 @@ class Summarizer(nn.Module):
             # decoder input size == encoder output size == (batch_size, 512, 768)
             out, attn_dist = self.decoder(context_vector,encoder_outputs, (None,None))
 
-            logits.append(out[:,-1:,:])
-            attns.append(attn_dist[:,-1:,:])
+            logits.append(out[:,i:i+1,:])
+            attns.append(attn_dist[:,i:i+1,:])
         
         logits = torch.cat(logits, dim=1)
         attns = torch.cat(attns, dim=1)
 
         # print(logits.size(), attns.size())
         return logits, attns
-
 
     def decoder_greedy(self, batch):
         input_ids_batch, input_mask_batch, example_index_batch, enc_batch_extend_vocab, extra_zeros, _ = get_input_from_batch(batch)
