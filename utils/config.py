@@ -15,7 +15,7 @@ seq_len = 100
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--persona", action="store_true")
-parser.add_argument("--hidden_dim", type=int, default=100) #3072
+parser.add_argument("--hidden_dim", type=int, default=3072)
 parser.add_argument("--emb_dim", type=int, default=768)
 parser.add_argument("--batch_size", type=int, default=36)
 parser.add_argument("--lr", type=float, default=0.0003)
