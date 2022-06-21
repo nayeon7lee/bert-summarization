@@ -23,7 +23,7 @@ Markdown==3.1
 mkl-fft==1.0.10
 mkl-random==1.0.2
 mock==2.0.0
-numpy==1.14.3
+numpy==1.22.0
 olefile==0.46
 pathlib==1.0.1
 pbr==5.1.3
