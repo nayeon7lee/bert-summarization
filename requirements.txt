@@ -14,7 +14,7 @@ futures==3.2.0
 gast==0.2.2
 grpcio==1.19.0
 h5py==2.9.0
-html5lib==0.9999999
+html5lib==0.999999999
 idna==2.8
 jmespath==0.9.4
 Keras-Applications==1.0.7
